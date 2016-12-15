@@ -1,9 +1,20 @@
-
+# ================================================================
+#
+# ESPOL 2016-2T
+# Computer Organization and Architecture Project Partial
+# Group #6
+# Members:
+# Carvajal Edgar
+# Fernandez Israel
+# Velez Washington
+#
+# ================================================================
 # Main:
-#   $s0 -> Operation
+#   $s0 -> Operacion
 #   $s1 -> Key
-#   $s2 -> String length
-#   $s3 -> Computed string address
+#   $s2 -> longitud string
+#   $s3 -> string calculado
+#   $s4 -> Orientacion (izq/der)
 #
 .data
 mainprompt: .asciiz "Escoja la operacion? (1: encriptar - 2: desencriptar - 0: salir)\n>"
@@ -31,32 +42,32 @@ main:
   la $a0, mainprompt
   syscall
 
-  li $v0, 5                     # Reads the operation to do
+  li $v0, 5                     # lee operacion
   syscall
 
   beq $v0, $zero, __exit        # OP = 0 -> EXIT
   bltz $v0, main                # OP < 0 -> MAIN
   bgt $v0, 2, main              # OP > 2 -> MAIN
 
-  addi $s0, $v0, 0              # Save in $s0 the operation
+  addi $s0, $v0, 0              # $s0 <- operacion
 
-__keyAsk:                       # Read key
-  li $v0, 4                     #   NOTE: The key must not be equal to 0
-  la $a0, keyprompt             #         it is reduced in modulus 26
+__keyAsk:                       # lee llave
+  li $v0, 4                     #  la llave no puede ser 0
+  la $a0, keyprompt             #         se calcula el modulo con 26
   syscall
 
   li $v0, 5
   syscall
 
-  li $t0, 26                    # Save in $t0 modulus value
+  li $t0, 26                    # Guarda en t0 el valor del modulo
   div $v0, $t0
   mfhi $t1                      # $t1 <- $v0 % 26
 
   beqz $t1, __keyAsk
   blt $t1, $0, __keyAsk
-  addi $s1, $t1, 0              # Save the key in $s1
+  addi $s1, $t1, 0              # $s1 <- key
 
-__stringAsk:                    # Read the string to manipulate
+__stringAsk:                    # Lee el string para cifrar/descifrar
   li $v0, 4
   la $a0, stringprompt
   syscall
@@ -90,8 +101,8 @@ __orientationAsk:
 
 
 __allowMemory:
-  li $v0,9                      # Allocate a memory buffer
-  addi $a0, $s2, 1              # to save the computed string
+  li $v0,9                      # crea un buffer en memoria
+  addi $a0, $s2, 1              # para guardar el nuevo string
   syscall
 
   addi $s3, $v0, 0
@@ -102,8 +113,8 @@ __selectOp:
   j main
 
 __decryptMode:
-  add $t0, $s1, $s1             # This calculate the opposite
-  sub $s1, $s1, $t0             # of the key
+  add $t0, $s1, $s1             # calcula el opuesto
+  sub $s1, $s1, $t0             # de la llave
 
   li $v0, 4
   la $a0, decryprompt
@@ -139,25 +150,22 @@ __encryptMode:
 
   beq $s4, 0, __cipherCall
 
-  add $t0, $s1, $s1             # This calculate the opposite
-  sub $s1, $s1, $t0             # of the key
+  add $t0, $s1, $s1             # calcula el opuesto
+  sub $s1, $s1, $t0             # de la llave
 
-__cipherCall:                 # Invoke the cipher procedure with paramethers:
-  addi $a0, $s2, 0              #   $a0 <- String length
-  li $a1, 0                     #   $a1 <- Current index
-  addi $a2, $s3, 0              #   $a2 <- Result string address
+__cipherCall:                 # Llama a la funcion de encriptado
+  addi $a0, $s2, 0              #   $a0 <- longitud string
+  li $a1, 0                     #   $a1 <- indice actual
+  addi $a2, $s3, 0              #   $a2 <- direccion de retorno del string
   jal __caesarCipher
 
   j __done
 
-__done:                         # Print result
+__done:
   li $v0, 4
   la $a0, resultprompt
   syscall
 
-  #
-  # Print the operation output
-  #
   addi $a0, $s3, 0
   li $v0, 4
   syscall
@@ -166,22 +174,22 @@ __done:                         # Print result
   la $a0, endl
   syscall
 
-  li $v0, 4                     # Print "continue" request
+  li $v0, 4
   la $a0, conprompt
   syscall
 
-  li $v0, 5                     # Read reply
+  li $v0, 5
   syscall
 
   addi $t0, $v0, 0              # $t0 <- reply
 
-  li $v0, 4                     # Print a \n
+  li $v0, 4
   la $a0, endl
   syscall
 
   beq $t0, 1, main              # $t0 != 1 -> EXIT
 
-__exit:                         # Print goodbye message and exit
+__exit:
   li $v0, 4
   la $a0, exitprompt
   syscall
@@ -194,21 +202,7 @@ __exit:                         # Print goodbye message and exit
   ##############################
 
 # =================================================
-# cipherCore
-#
-# NOTA:
-#   The cipher algorithm is the following:
-#     c = ((p - l) + k) % 26) + l
-#     p = ((c - l) - k) % 26) + l
-#
-#   Dove:
-#       c = ciphertext
-#       p = plaintext
-#       l = ASCII offset character
-#       k = key
-#
-#   For information about the offset character cfr:
-#       __getcharoffset
+# caesarCipher
 #
 # Paramethers:
 #   $a0 <- String length
@@ -220,14 +214,14 @@ __exit:                         # Print goodbye message and exit
 #   $v1 <- error (-1/0)
 # =================================================
 __caesarCipher:
-  addi $sp, $sp -16             # Save:
-  sw $a0, 0($sp)                #   String length
-  sw $a1, 4($sp)                #   Current index
-  sw $a2, 8($sp)                #   Result strin address
-  sw $ra, 12($sp)               #   Return Address
+  addi $sp, $sp -16
+  sw $a0, 0($sp)                #  length(string)
+  sw $a1, 4($sp)                #  indice actual
+  sw $a2, 8($sp)                #  direccion resultado
+  sw $ra, 12($sp)
 
-  li $t5, 0                     # write the end strin character \0
-  sb $t5, 0($a2)                # in current position.
+  li $t5, 0
+  sb $t5, 0($a2)
 
   bge $a1, $a0, __caesarCipherend
 
@@ -236,10 +230,10 @@ __caesarCipher:
 
   lb $a0, string($a1)
 
-  jal __isaspace
-  beq $v0, 1, __caesarCipherisspace
+  jal __isaSpecialChar
+  beq $v0, 1, __caesarCipherisSpecialChar
 
-  jal __getcharoffset           # this procedure returns the offset in $v0
+  jal __getcharoffset
   addi $t2, $v0, 0              # $t2 <- offset
 
   __thecipheralgorithm:
@@ -267,24 +261,16 @@ __caesarCipher:
     addi $sp, $sp, 16
     jr $ra
 
-  __caesarCipherisspace:
-    li $t5, 32
+  __caesarCipherisSpecialChar:
+    move $t5, $a0
     sb $t5, 0($a2)
     j __caesarCiphernextchar
 
 # =================================================
 # getCharOffset
 #
-# Returns the right offset to execute
-# cipher and decipher operation
-#
-#   The'offset is:
-#     During cipher:
-#       'a': if the char is lowercase
-#       'A': if the char is uppercase
-#     During decipher:
-#       'z': if the char is lowercase
-#       'Z': if the char is uppercase
+# Calcula el siguiente caracter
+# cuando son caracteres frontera
 #
 # Paramether:
 #   $a0 <- Character to test
@@ -303,32 +289,30 @@ __getcharoffset:
   lw $ra, 4($sp)
   addi $sp, $sp, 8
 
-  bne $v0, 1, __caesarCipheruppercase
-
   __caesarCipherlowercase:
     beq $s0, 2, __deciphercorelowercase
     li $v0, 97
+
+    beq $s4,0, __jumpRa
+    li $v0, 122
     jr $ra
 
   __deciphercorelowercase:
     li $v0, 122
+
+    beq $s4, 0, __jumpRa
+    li $v0, 97
     jr $ra
 
-  __caesarCipheruppercase:
-    beq $s0, 2, __deciphercoreuppercase
-    li $v0, 65
+  __jumpRa:
     jr $ra
 
-  __deciphercoreuppercase:
-    li $v0, 90
-    jr $ra
 
 # =================================================
 # strLen
 #
-# The procedure counts the string length and
-# validates it. A valid string must not contain
-# any character apart from letters and spaces
+# calcula longitud de la cadena y desprecia las
+# mayusculas
 #
 # Paramether;
 #   $a0 <- string to validate
@@ -383,7 +367,7 @@ __strlen:
     jr $ra
 
 # =================================================
-# isAChar
+# isavalidchar
 #
 # Paramether
 #   $a0 <- Character to test
@@ -400,7 +384,7 @@ __isavalidchar:
   jal __isaletter
   beq $v0, 1, __validcharfound
 
-  jal __isaspace
+  jal __isaSpecialChar
   beq $v0, 1, __validcharfound
 
   lw $a0, 0($sp)
@@ -437,10 +421,6 @@ __isaletter:
   beq $v0, 1, __isaletterok
   blt $v0, 0, __isalettererror
 
-  jal __isuppercase
-  beq $v0, 1, __isaletterok
-  blt $v0, 0, __isalettererror
-
   __isalettererror:
     lw $a0, 0($sp)
     lw $ra, 4($sp)
@@ -458,17 +438,20 @@ __isaletter:
     jr $ra
 
 # =================================================
-# isASpace
+# isASpecialChar
+#
+# caracteres antes de 64 ok
+# entonces mayres no son caracteres especiales
 #
 # Paramether
 #   $a0 <- Char to test
 #
 # Returns
-#   $v0 <- 1: is a space
-#          0: not a space
+#   $v0 <- 1: is a special char
+#          0: not a special char
 # =================================================
-__isaspace:
-  bne $a0, 32, __isnotaspace
+__isaSpecialChar:
+  bge $a0, 64, __isnotaspace
 
   li $v0, 1
   jr $ra
@@ -498,29 +481,5 @@ __islowercase:
     li $v0, -1
     jr $ra
   __isnotlowercase:
-    li $v0, 0
-    jr $ra
-
-# =================================================
-# isUpperCase
-#
-# Paramether
-#   $a0 <- character to test
-#
-# Returns
-#   $v0 <- 1: is uppercase
-#          0: not uppercase
-#         -1: not a letter
-# =================================================
-__isuppercase:
-  blt $a0, 65, __isuppercaseerror
-  bgt $a0, 90, __isnotuppercase
-
-  li $v0, 1
-  jr $ra
-  __isuppercaseerror:
-    li $v0, -1
-    jr $ra
-  __isnotuppercase:
     li $v0, 0
     jr $ra
